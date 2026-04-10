@@ -1,0 +1,25 @@
+# Python dependencies
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# Environment
+.env
+
+# Project Specific
+chrome_profile/
+msedge_profile/
+gemini_chrome_profile/
+debug_profile/
+*_profile/
+# *.png
+*.log
+
+# Data (Optional: ignore these if you don't want to share your actual PDFs/Results on GitHub)
+Articles/
+extracted_studies.xlsx
+validation_discrepancies.xlsx
+
+healing_comparison_report.xlsx

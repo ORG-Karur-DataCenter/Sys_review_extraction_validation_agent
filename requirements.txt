@@ -1,0 +1,6 @@
+playwright
+pandas
+openpyxl
+tqdm
+colorama
+google-generativeai
