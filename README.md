@@ -1,32 +1,33 @@
-# Systematic Review Extraction Validation & Healing Agent
+<p align="center">
+  <h1 align="center">Systematic Review Validation & Healing Agent</h1>
+  <p align="center">
+    Autonomous 3-phase pipeline: Validate → Self-Heal → Re-Validate.<br>
+    Catches extraction errors and fixes them automatically.
+  </p>
+</p>
 
-An autonomous validation and self-healing pipeline that verifies AI-extracted research data against source PDFs using Google Gemini, automatically detects discrepancies, and re-extracts failed entries — without human intervention.
-
-Part of the **Agentic AI-Powered Systematic Review Pipeline** described in:
-> *"Agentic AI for Systematic Reviews: A Four-Agent Pipeline for Deduplication, Screening, Extraction, and Validation"*
-
-**Related Repositories:**
-- [Deduplication Agent](https://github.com/ORG-Karur-DataCenter/Systematic_review_DeDuplication_agent)
-- [Screening Agent](https://github.com/ORG-Karur-DataCenter/Systematic_review_screening_agent)
-- [Extraction Agent](https://github.com/ORG-Karur-DataCenter/Systematic_review_extraction_agent)
-
----
-
-## Features
-
-- **3-Phase autonomous pipeline** — Validate → Self-Heal → Re-Validate, fully automated
-- **Tiered discrepancy classification**:
-  - `CRITICAL`: wrong numbers, swapped cohorts, missing data → triggers re-extraction
-  - `MINOR`: rounding differences <1%, synonym variation → logged but PASS
-- **Self-healing loop** — failed rows are removed, re-extracted from PDF, and re-validated
-- **Healing comparison report** — `healing_comparison_report.xlsx` shows exact field changes
-- **Cross-validation** — extract with two LLM calls; flag fields where extractors disagree
-- **API key rotation** — provide `API_KIT.txt` to automatically switch keys on rate limits
-- **Free by default** — Playwright browser automation; no API costs required
+<p align="center">
+  <a href="#quickstart">Quickstart</a> •
+  <a href="#how-it-works">How It Works</a> •
+  <a href="#output">Output</a> •
+  <a href="#advanced">Advanced</a> •
+  <a href="#contributing">Contributing</a>
+</p>
 
 ---
 
-## Installation
+> Part of the **Agentic AI-Powered Systematic Review Pipeline**
+>
+> [Deduplication Agent](https://github.com/ORG-Karur-DataCenter/Systematic_review_DeDuplication_agent) →
+> [Screening Agent](https://github.com/ORG-Karur-DataCenter/Systematic_review_screening_agent) →
+> [Extraction Agent](https://github.com/ORG-Karur-DataCenter/Systematic_review_extraction_agent) →
+> **Validation & Healing Agent**
+
+---
+
+## Quickstart
+
+### 1. Install
 
 ```bash
 git clone https://github.com/ORG-Karur-DataCenter/Sys_review_extraction_validation_agent.git
@@ -35,36 +36,161 @@ pip install -r requirements.txt
 playwright install chromium
 ```
 
----
+### 2. Prepare Your Inputs
 
-## Usage
+| Input | Description |
+|-------|-------------|
+| `Articles/` folder | Source PDFs (same ones used for extraction) |
+| `extracted_studies.xlsx` | Output from the Extraction Agent |
 
-### Free Mode (Browser Automation)
+### 3. Run
 
+**Browser mode (default — free, no API key):**
 ```bash
-python healing_pipeline.py --browser chrome
+python healing_pipeline.py --mode browser --browser chrome
 ```
 
-### API Mode (Faster, Recommended)
-
+**API mode (faster):**
 ```bash
-python healing_pipeline.py --api-key YOUR_GEMINI_KEY
+python healing_pipeline.py --api-key YOUR_KEY
 ```
 
-### With API Key Rotation (No Rate Limit Waits)
-
+**API mode with key rotation (no rate-limit waits):**
 ```bash
 python healing_pipeline.py --api-kit API_KIT.txt
 ```
 
-`API_KIT.txt` — one API key per line:
+The pipeline runs all 3 phases automatically and outputs a clean, validated dataset.
+
+---
+
+## How It Works
+
 ```
+                    ┌──────────────────────────┐
+                    │   healing_pipeline.py     │
+                    └────────┬─────────────────┘
+                             │
+        ┌────────────────────┼────────────────────┐
+        ▼                    ▼                    ▼
+  ┌───────────┐       ┌───────────┐       ┌───────────┐
+  │  Phase 1  │       │  Phase 2  │       │  Phase 3  │
+  │ VALIDATE  │──→──  │ SELF-HEAL │──→──  │ RE-VALIDATE│
+  │           │ FAIL  │           │       │           │
+  │ Compare   │       │ Remove    │       │ Verify    │
+  │ extracted │       │ failed    │       │ healed    │
+  │ data vs   │       │ rows,     │       │ rows are  │
+  │ source PDF│       │ re-extract│       │ now correct│
+  └───────────┘       └───────────┘       └───────────┘
+```
+
+### Phase 1 — Validation
+
+For each row in `extracted_studies.xlsx`:
+1. Uploads the source PDF to Gemini
+2. Sends: *"Here's the extracted data + the PDF. Are they consistent?"*
+3. Gemini returns `PASS` or `FAIL` with discrepancy details
+4. Discrepancies are classified:
+
+| Severity | Example | Action |
+|----------|---------|--------|
+| **CRITICAL** | Wrong sample size, swapped cohorts | → FAIL → triggers Phase 2 |
+| **MINOR** | Rounding <1%, synonym variation | → Downgraded to PASS |
+
+```
+Row 1 (Sanjay 1993): ✔ PASS
+Row 2 (Ouyang 2017): ✘ FAIL — 3 CRITICAL discrepancies
+   Study Design: "retrospective" ≠ "RCT"
+   Sample Size:  "94" ≠ "9999"
+   Diagnosis:    "Giant Cell Tumor" ≠ "Knee Osteoarthritis"
+```
+
+### Phase 2 — Self-Healing
+
+For every FAIL row:
+1. Removes the failed entry from the dataset
+2. Re-extracts data from the original PDF using `gemini_extractor.py`
+3. Appends the corrected extraction back to the dataset
+
+### Phase 3 — Re-Validation
+
+1. Re-validates all healed rows (same process as Phase 1)
+2. Generates `healing_comparison_report.xlsx` — before/after for every changed field
+3. Saves final audit trail to `validation_discrepancies.xlsx`
+
+---
+
+## Output
+
+| File | Description |
+|------|-------------|
+| `extracted_studies.xlsx` | Final clean dataset (auto-healed) |
+| `validation_discrepancies.xlsx` | All discrepancies found in Phase 1 |
+| `healing_comparison_report.xlsx` | Before/after field values for healed rows |
+| `pipeline_summary.json` | Machine-readable pipeline run summary |
+| `pipeline_run.log` | Full timestamped execution log |
+| `missing_data_justifications.json` | Per-field null reasons from re-extraction |
+
+---
+
+## Cross-Validation
+
+Compare outputs from two independent extraction runs:
+
+```bash
+python cross_validate_extraction.py --file-a extracted_A.xlsx --file-b extracted_B.xlsx
+```
+
+Produces:
+- `cross_agent_discrepancies.xlsx` — field-level disagreements
+- `cross_validation_summary.json` — agreement rate, critical vs minor counts
+
+---
+
+## Advanced
+
+### Command-Line Options
+
+```
+python healing_pipeline.py --help
+
+Options:
+  --mode MODE         Execution mode: api or browser              [default: api]
+  --browser CHANNEL   Browser channel (chrome, msedge)
+  --api-key KEY       Single Gemini API key
+  --api-kit FILE      File with multiple API keys (one per line)
+  --model NAME        Gemini model (default: gemini-2.5-flash)
+  --limit N           Process only first N rows
+```
+
+### API Key Rotation
+
+For large datasets, provide multiple keys to bypass rate limits:
+
+```
+API_KIT.txt:
 AIzaSyABC...
 AIzaSyDEF...
 AIzaSyGHI...
 ```
 
-On rate limit (429), the pipeline automatically switches to the next key (2-second pause) instead of waiting minutes. After cycling all keys, it waits 60 seconds before the next cycle.
+On rate limit (429), the pipeline switches to the next key with a 2-second pause. After cycling all keys, it waits 60 seconds before the next cycle.
+
+### End-to-End Testing
+
+```bash
+python e2e_test.py
+```
+
+Runs 23 automated tests covering:
+
+| Category | Tests | Description |
+|----------|-------|-------------|
+| Deduplication | 4 | DOI, PMID, exact title, fuzzy title matching |
+| Dual-Pass Screening | 4 | Include, exclude, competing diagnosis, review detection |
+| Post-Processing | 6 | Percentage conversion, null reason logging |
+| API Extraction | 6 | PDF upload, JSON parsing, field completeness |
+| API Validation | 3 | PASS/FAIL detection, discrepancy classification |
 
 ---
 
@@ -72,102 +198,57 @@ On rate limit (429), the pipeline automatically switches to the next key (2-seco
 
 ```
 validation_agent/
-├── healing_pipeline.py              # Main 3-phase validation + healing pipeline
+├── healing_pipeline.py              # Main 3-phase pipeline orchestrator
 ├── validation_agent.py              # Core validation logic
-├── gemini_extractor.py              # PDF extraction module (used in Phase 2)
-├── cross_validate_extraction.py     # Cross-validation between two LLM extractors
+├── gemini_extractor.py              # PDF extraction (used in Phase 2)
+├── cross_validate_extraction.py     # Cross-agent comparison tool
 ├── e2e_test.py                      # End-to-end test suite (23 tests)
-├── template_extracted_studies.xlsx  # Blank output template (schema reference)
-├── requirements.txt                 # Python dependencies
-└── README.md                        # This file
+├── template_extracted_studies.xlsx   # Blank output template
+├── requirements.txt                 # Dependencies
+├── LICENSE                          # MIT License
+└── Articles/                        # Source PDFs (gitignored)
 ```
-
----
-
-## Pipeline Phases
-
-### Phase 1: Validation
-
-For each row in `extracted_studies.xlsx`:
-1. Uploads the source PDF to Gemini
-2. Sends extracted data + PDF for comparison
-3. Gemini returns: `status` (PASS/FAIL), `discrepancies[]` with `severity` and `explanation`
-4. CRITICAL discrepancies → FAIL; MINOR only → downgraded to PASS
-
-```
-Row 1 (Sanjay 1993): ✔ PASS  — correct data confirmed
-Row 2 (Ouyang 2017): ✘ FAIL  — 3 CRITICAL discrepancies:
-   Study Design: "retrospective" ≠ "RCT"
-   Sample Size:  "94" ≠ "9999"
-   Diagnosis:    "Giant Cell Tumor" ≠ "Knee Osteoarthritis"
-```
-
-### Phase 2: Self-Healing
-
-For every FAIL row:
-1. Removes the failed entry from `extracted_studies.xlsx`
-2. Re-extracts data from the PDF using `gemini_extractor.py`
-3. Appends the corrected extraction back to `extracted_studies.xlsx`
-
-### Phase 3: Re-Validation
-
-1. Re-validates all healed rows (same process as Phase 1)
-2. Generates `healing_comparison_report.xlsx` — shows before/after for every changed field
-3. Saves final `validation_discrepancies.xlsx` with full audit trail
-
----
-
-## Output Files
-
-| File | Description |
-|---|---|
-| `extracted_studies.xlsx` | Final clean extraction data (auto-healed) |
-| `validation_discrepancies.xlsx` | All discrepancies found in Phase 1 |
-| `healing_comparison_report.xlsx` | Before/after field values for healed rows |
-| `pipeline_summary.json` | Machine-readable pipeline run summary |
-| `pipeline_run.log` | Full timestamped execution log |
-| `missing_data_justifications.json` | Per-field null reasons from extraction |
-
----
-
-## Discrepancy Classification
-
-| Severity | Trigger | Action |
-|---|---|---|
-| `CRITICAL` | Numeric mismatch >1%, wrong study design, swapped cohorts | FAIL → Re-extract |
-| `MINOR` | Rounding <1%, synonym variation, formatting | Log only → PASS |
 
 ---
 
 ## API Configuration
 
-| Parameter | Validation | Extraction |
-|---|---|---|
+| Parameter | Validation | Extraction (Phase 2) |
+|-----------|-----------|---------------------|
 | `temperature` | `0.2` | `0.2` |
 | `max_output_tokens` | `2048` | `8192` |
 | Model | `gemini-2.5-flash` | `gemini-2.5-flash` |
 
-> Extraction uses `8192` tokens to ensure the full schema JSON is never truncated.
+> Extraction uses `8192` tokens to prevent truncation of the full schema JSON.
 
 ---
 
-## End-to-End Test Results
+## Modes
 
-The pipeline was validated with 23 automated tests and a full integration test:
+| Mode | Command | Speed | Cost |
+|------|---------|-------|------|
+| **Browser** (default) | `python healing_pipeline.py --browser chrome` | ~30s/row | Free |
+| **API** | `python healing_pipeline.py --api-key KEY` | ~10s/row | Free tier |
+| **API + rotation** | `python healing_pipeline.py --api-kit API_KIT.txt` | ~10s/row | Free tier × N keys |
 
-| Phase | Tests | Result |
-|---|---|---|
-| Deduplication | 4/4 | ✅ PASS |
-| Dual-Pass Screening | 4/4 | ✅ PASS |
-| Post-Processing | 6/6 | ✅ PASS |
-| API Extraction | 6/6 | ✅ PASS |
-| API Validation | 3/3 | ✅ PASS |
-| **Full Healing Integration** | **1/1** | **✅ COMPLETE** |
+---
 
-Full integration: planted 3 CRITICAL errors in extracted data → validated → self-healed → re-validated → **all errors corrected automatically**.
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/my-feature`)
+3. Commit your changes (`git commit -m 'Add feature'`)
+4. Push to the branch (`git push origin feature/my-feature`)
+5. Open a Pull Request
 
 ---
 
 ## License
 
-MIT License — see validation_agent directory for details.
+MIT License — see [LICENSE](LICENSE) for details.
+
+---
+
+<p align="center">
+  <sub>Built for systematic reviewers. Errors in, clean data out.</sub>
+</p>
