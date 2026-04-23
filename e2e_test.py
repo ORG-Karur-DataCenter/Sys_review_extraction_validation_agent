@@ -13,7 +13,7 @@ import shutil
 import traceback
 import pandas as pd
 
-API_KEY = "AIzaSyDWfx3KJoRONENZESBVSehQRNXZ59-p_tw"
+API_KEY = ""
 MODEL = "gemini-2.5-flash"
 TEST_DIR = os.path.dirname(os.path.abspath(__file__))
 
